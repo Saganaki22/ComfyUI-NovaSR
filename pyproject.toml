@@ -1,7 +1,7 @@
 [project]
 name = "ComfyUI-NovaSR"
 description = "ComfyUI node for NovaSR - Ultra-fast audio super resolution (3600x realtime, 50KB model)"
-version = "1.0.0"
+version = "1.0.1"
 license = {file = "LICENSE"}
 
 dependencies = [
