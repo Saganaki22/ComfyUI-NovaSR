@@ -11,6 +11,8 @@ import sys
 import random
 import gc
 from pathlib import Path
+from urllib.request import urlretrieve
+import urllib.error
 
 import torch
 import numpy as np
@@ -85,6 +87,38 @@ def get_novasr_model_path():
     fallback_path = str(Path(__file__).parent.parent / "models" / "NovaSR")
     print(f"[NovaSR] Using fallback path: {fallback_path}")
     return fallback_path
+
+
+def download_novasr_model():
+    """Download the NovaSR model if it doesn't exist."""
+    model_dir = Path(get_novasr_model_path())
+    model_dir.mkdir(parents=True, exist_ok=True)
+    
+    model_path = model_dir / "NovaSR.safetensors"
+    
+    if model_path.exists():
+        print(f"[NovaSR] Model already exists at: {model_path}")
+        return str(model_path)
+    
+    model_url = "https://huggingface.co/drbaph/NovaSR/resolve/main/NovaSR.safetensors?download=true"
+    
+    print(f"[NovaSR] Downloading model from {model_url}...")
+    print(f"[NovaSR] Saving to: {model_path}")
+    
+    try:
+        def reporthook(count, block_size, total_size):
+            percent = int(count * block_size * 100 / total_size) if total_size > 0 else 0
+            print(f"[NovaSR] Downloading: {percent}% ({count * block_size / 1024 / 1024:.2f}MB / {total_size / 1024 / 1024:.2f}MB)")
+        
+        urlretrieve(model_url, model_path, reporthook=reporthook)
+        print(f"[NovaSR] Model downloaded successfully!")
+        return str(model_path)
+    except urllib.error.URLError as e:
+        print(f"[NovaSR] Error downloading model: {e}")
+        return None
+    except Exception as e:
+        print(f"[NovaSR] Unexpected error downloading model: {e}")
+        return None
 
 
 class FastSRWrapper:
@@ -163,6 +197,7 @@ def generate_spectrogram_comparison(audio_before, sr_before, audio_after, sr_aft
     Returns:
         PIL Image: Side-by-side spectrogram comparison
     """
+    print(f"[NovaSR] Spectrogram - Before: {sr_before/1000:.1f}kHz, After: {sr_after/1000:.1f}kHz")
     try:
         import matplotlib.pyplot as plt
         import matplotlib
@@ -187,11 +222,17 @@ def generate_spectrogram_comparison(audio_before, sr_before, audio_after, sr_aft
 
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
         fig.patch.set_facecolor('#1a1a1a')
+        ax1.set_facecolor('#000004')
+        ax2.set_facecolor('#1a1a1a')
+        fig.patch.set_alpha(1.0)
+        ax1.set_alpha(1.0)
+        ax2.set_alpha(1.0)
 
         import librosa
         import librosa.display
 
         D_before = librosa.amplitude_to_db(np.abs(librosa.stft(audio_before)), ref=np.max)
+
         img1 = librosa.display.specshow(
             D_before,
             sr=sr_before,
@@ -201,7 +242,7 @@ def generate_spectrogram_comparison(audio_before, sr_before, audio_after, sr_aft
             cmap='magma',
             ax=ax1
         )
-        ax1.set_title('Before (Input)', color='white', fontsize=14, fontweight='bold')
+        ax1.set_title(f'Before ({sr_before/1000:.1f}kHz Input)', color='white', fontsize=14, fontweight='bold')
         ax1.set_ylabel('Frequency (Hz)', color='white', fontsize=11)
         ax1.tick_params(axis='both', colors='white', labelsize=9)
         ax1.spines['bottom'].set_color('white')
@@ -210,6 +251,7 @@ def generate_spectrogram_comparison(audio_before, sr_before, audio_after, sr_aft
         ax1.spines['right'].set_color('white')
         ax1.xaxis.label.set_color('white')
         ax1.yaxis.label.set_color('white')
+        ax1.set_ylim(0, 24000)
 
         D_after = librosa.amplitude_to_db(np.abs(librosa.stft(audio_after)), ref=np.max)
         img2 = librosa.display.specshow(
@@ -231,13 +273,14 @@ def generate_spectrogram_comparison(audio_before, sr_before, audio_after, sr_aft
         ax2.spines['right'].set_color('white')
         ax2.xaxis.label.set_color('white')
         ax2.yaxis.label.set_color('white')
+        ax2.set_ylim(0, 24000)
 
         cbar = fig.colorbar(img2, ax=[ax1, ax2], fraction=0.02, pad=0.04)
-        cbar.set_label('dB', color='white', fontsize=10)
+        cbar.set_label('dBFS', color='white', fontsize=10)
         cbar.ax.yaxis.set_tick_params(color='white', labelsize=9)
         plt.setp(plt.getp(cbar.ax.axes, 'yticklabels'), color='white')
 
-        fig.suptitle('Audio Super Resolution Spectrogram Comparison',
+        fig.suptitle('NovaSR Spectrogram Comparison',
                      color='white', fontsize=16, fontweight='bold')
 
         try:
@@ -246,7 +289,7 @@ def generate_spectrogram_comparison(audio_before, sr_before, audio_after, sr_aft
             plt.tight_layout(rect=[0, 0, 1, 0.96])
 
         buf = io.BytesIO()
-        plt.savefig(buf, format='png', facecolor='#1a1a1a', dpi=100)
+        plt.savefig(buf, format='png', facecolor='#1a1a1a', dpi=200)
         buf.seek(0)
         img = Image.open(buf)
         plt.close(fig)
@@ -294,9 +337,19 @@ class NovaSRNode:
                 print(f"[NovaSR] Model directory does NOT exist!")
 
         if not model_files:
+            if not cls._logged_models:
+                print(f"[NovaSR] No models found, attempting auto-download...")
+            downloaded_model = download_novasr_model()
+            if downloaded_model and os.path.exists(downloaded_model):
+                model_filename = os.path.basename(downloaded_model)
+                model_files.append(model_filename)
+                if not cls._logged_models:
+                    print(f"[NovaSR] Successfully downloaded model: {model_filename}")
+
+        if not model_files:
             model_files = ["pytorch_model.bin (download required)", "NovaSR.safetensors (download required)"]
             if not cls._logged_models:
-                print(f"[NovaSR] No models found, using default options")
+                print(f"[NovaSR] Auto-download failed, using default options")
 
         cls._logged_models = True
 
@@ -308,6 +361,10 @@ class NovaSRNode:
                 "model": (model_files, {
                     "default": model_files[0] if model_files else "pytorch_model.bin (download required)",
                     "tooltip": "Model checkpoint file (place in ComfyUI/models/NovaSR/)"
+                }),
+                "output_stereo": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "Convert output to stereo (mono input required for NovaSR, but some ComfyUI pipelines need stereo)"
                 }),
                 "unload_model": ("BOOLEAN", {
                     "default": False,
@@ -330,6 +387,7 @@ class NovaSRNode:
         self,
         audio: tuple,
         model: str = "pytorch_model.bin (download required)",
+        output_stereo: bool = False,
         unload_model: bool = False,
         show_spectrogram: bool = True
     ):
@@ -339,6 +397,7 @@ class NovaSRNode:
         Args:
             audio: ComfyUI audio tuple (audio_tensor, sample_rate) or dict
             model: Model checkpoint file name
+            output_stereo: Convert output to stereo (mono input required for NovaSR)
             unload_model: Unload model from GPU memory after generation
             show_spectrogram: Generate before/after spectrogram comparison
 
@@ -373,14 +432,15 @@ class NovaSRNode:
         elif audio_waveform.ndim == 3:
             audio_waveform = audio_waveform.squeeze(0)
 
+        original_audio_for_spec = audio_waveform.copy()
+        original_sr_for_spec = sr
+        print(f"[NovaSR] Captured original audio for spectrogram: sr={original_sr_for_spec}Hz, shape={original_audio_for_spec.shape}")
+
         is_stereo = audio_waveform.shape[0] > 1
         if is_stereo:
             print(f"[NovaSR] Stereo input detected, converting to mono (NovaSR is mono-only)")
             audio_waveform = np.mean(audio_waveform, axis=0)
             audio_waveform = audio_waveform[np.newaxis, :]
-
-        original_audio_for_spec = audio_waveform.copy()
-        original_sr_for_spec = sr
 
         if sr != 16000:
             import librosa
@@ -455,6 +515,10 @@ class NovaSRNode:
 
                 assert output_waveform.ndim == 2, f"Output waveform must be 2D [channels, samples], got shape {output_waveform.shape}"
 
+                if output_stereo and output_waveform.shape[0] == 1:
+                    print(f"[NovaSR] Converting mono to stereo output...")
+                    output_waveform = output_waveform.repeat(2, 1)
+
                 output_waveform = output_waveform.unsqueeze(0)
                 print(f"[NovaSR] Processing complete! Output: {output_waveform.shape[-1]/48000:.2f}s at 48kHz, shape: {output_waveform.shape}")
 
@@ -515,7 +579,8 @@ class NovaSRNode:
     @classmethod
     def IS_CHANGED(cls, **kwargs):
         model = kwargs.get("model", "")
-        return float(f"{hash(model)}")
+        output_stereo = kwargs.get("output_stereo", False)
+        return float(f"{hash(model + str(output_stereo))}")
 
 
 def register_folder_paths():

@@ -5,15 +5,7 @@ version = "1.0.0"
 license = {file = "LICENSE"}
 
 dependencies = [
-    "torch>=2.0.0",
-    "torchaudio>=2.0.0",
-    "soundfile",
-    "librosa>=0.9.2",
-    "huggingface_hub",
-    "einops",
-    "safetensors",
-    "matplotlib",
-    "numpy",
+    "torch>=2.0.0", "torchaudio>=2.0.0", "soundfile", "librosa>=0.9.2", "huggingface_hub", "einops", "safetensors", "matplotlib", "numpy",
 ]
 
 [project.urls]
