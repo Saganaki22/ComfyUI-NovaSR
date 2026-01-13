@@ -17,6 +17,12 @@ Ultra-fast audio super resolution custom node for ComfyUI, powered by the NovaSR
 <img width="1515" height="1012" alt="image" src="https://github.com/user-attachments/assets/a10cab1b-020c-4e4c-b326-b9cea0644dde" />
 
 
+
+
+https://github.com/user-attachments/assets/f91bfa74-e390-4106-9f36-6df6e9a7b405
+
+
+
 ## Features
 
 - **Incredibly Fast**: 3600x realtime speed on a single A100 GPU
